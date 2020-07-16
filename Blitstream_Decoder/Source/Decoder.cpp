@@ -97,15 +97,12 @@ void Decoder::Initialize(HWND hwnd) {
 	CU_CHECK(cuDeviceGet(&cu_device, 0));
 	CU_CHECK(cuCtxCreate(&cu_context, 0, cu_device));
 
-
 	CUVIDDECODECAPS decode_capabilities {
 		.eCodecType = cudaVideoCodec_HEVC,
 		.eChromaFormat = cudaVideoChromaFormat_420,
 		.nBitDepthMinus8 = 0
 	};
-	CU_CHECK(cuCtxPushCurrent(cu_context));
 	CU_CHECK(cuvidGetDecoderCaps(&decode_capabilities));
-	CU_CHECK(cuCtxPopCurrent(NULL));
 	assert(decode_capabilities.bIsSupported && "Could not find GPU capable of decoding HEVC stream");
 
 	CUVIDPARSERPARAMS parser_params {
@@ -119,33 +116,44 @@ void Decoder::Initialize(HWND hwnd) {
 	};
 	CU_CHECK(cuvidCreateVideoParser(&cu_parser, &parser_params));
 
-	DXGI_SWAP_CHAIN_DESC swapchain_desc = { 
-		.BufferDesc = DXGI_MODE_DESC {
-			.Width = dimensions.target_width,
-			.Height = dimensions.target_height,
-			.RefreshRate = DXGI_RATIONAL {
-				.Numerator = 60,
-				.Denominator = 1
-			},
-			.Format = DXGI_FORMAT_B8G8R8A8_UNORM,
-		},
+	// Force DirectX 11.1
+	ID3D11Device *temp_device;
+	ID3D11DeviceContext *temp_context;
+	D3D_FEATURE_LEVEL feature_levels[] = { D3D_FEATURE_LEVEL_11_1 };
+	D3D_FEATURE_LEVEL feature_level;
+	WIN_CHECK(D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr, D3D11_CREATE_DEVICE_DEBUG,
+								feature_levels, 1, D3D11_SDK_VERSION, &temp_device, &feature_level, &temp_context));
+	WIN_CHECK(temp_device->QueryInterface(__uuidof(ID3D11Device1), reinterpret_cast<void **>(&d3d11_device)));
+	WIN_CHECK(temp_context->QueryInterface(__uuidof(ID3D11DeviceContext1), reinterpret_cast<void **>(&d3d11_context)));
+
+	// Retrieve factory for swap chain creation
+	IDXGIDevice *dxgi_device;
+	WIN_CHECK(d3d11_device->QueryInterface(__uuidof(IDXGIDevice), reinterpret_cast<void **>(&dxgi_device)));
+	IDXGIAdapter *adapter = nullptr;
+	WIN_CHECK(dxgi_device->GetAdapter(&adapter));
+	IDXGIFactory1 *dxgi_factory = nullptr;
+	WIN_CHECK(adapter->GetParent(__uuidof(IDXGIFactory1), reinterpret_cast<void **>(&dxgi_factory)));
+	adapter->Release();
+	dxgi_device->Release();
+	IDXGIFactory2 *dxgi_factory_2 = nullptr;
+	WIN_CHECK(dxgi_factory->QueryInterface(__uuidof(IDXGIFactory2), reinterpret_cast<void **>(&dxgi_factory_2)));
+
+	DXGI_SWAP_CHAIN_DESC1 swapchain_desc {
+		.Width = dimensions.target_width,
+		.Height = dimensions.target_height,
+		.Format = DXGI_FORMAT_B8G8R8A8_UNORM,
 		.SampleDesc = DXGI_SAMPLE_DESC {
 			.Count = 1,
 			.Quality = 0
 		},
 		.BufferUsage = DXGI_USAGE_RENDER_TARGET_OUTPUT,
-		.BufferCount = 1,
-		.OutputWindow = hwnd,
-		.Windowed = TRUE
+		.BufferCount = 2,
+		.SwapEffect = DXGI_SWAP_EFFECT_FLIP_DISCARD
 	};
-	WIN_CHECK(D3D11CreateDeviceAndSwapChain(nullptr, D3D_DRIVER_TYPE_HARDWARE, NULL, 0 /*D3D11_CREATE_DEVICE_DEBUG*/, nullptr, 0, D3D11_SDK_VERSION,
-											&swapchain_desc, &d3d11_swapchain, &d3d11_device, nullptr, &d3d11_context));
-	WIN_CHECK(d3d11_swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), (LPVOID *)&d3d11_backbuffer));
-
-	CU_CHECK(cuCtxPushCurrent(cu_context));
-	CU_CHECK(cuGraphicsD3D11RegisterResource(&cu_graphics_resource, d3d11_backbuffer, CU_GRAPHICS_REGISTER_FLAGS_NONE));
-	CU_CHECK(cuGraphicsResourceSetMapFlags(cu_graphics_resource, CU_GRAPHICS_MAP_RESOURCE_FLAGS_WRITE_DISCARD));
-	CU_CHECK(cuCtxPopCurrent(nullptr));
+	WIN_CHECK(dxgi_factory_2->CreateSwapChainForHwnd(d3d11_device, hwnd, &swapchain_desc, nullptr, nullptr, &d3d11_swapchain));
+	dxgi_factory_2->Release();
+	dxgi_factory->Release();
+	WIN_CHECK(d3d11_swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void **>(&d3d11_backbuffer)));
 
 	CU_CHECK(cuMemAlloc(&device_ptr_converted_intermediate, 
 						static_cast<uint64_t>(dimensions.target_width) * static_cast<uint64_t>(dimensions.target_height) * 3));
@@ -174,20 +182,15 @@ void Decoder::Resize(uint32_t width, uint32_t height) {
 			.bottom = dimensions.target_rect_bottom
 		}
 	};
-	CU_CHECK(cuCtxPushCurrent(cu_context));
 	CU_CHECK(cuvidReconfigureDecoder(cu_decoder, &reconfigure_params));
 
 	// Release all reference counted instances of the backbuffer
-	CU_CHECK(cuGraphicsUnregisterResource(cu_graphics_resource));
+	//CU_CHECK(cuGraphicsUnregisterResource(cu_graphics_resource));
 	d3d11_backbuffer->Release();
 
 	// Resize swapchain and create new render target view from back buffer
 	WIN_CHECK(d3d11_swapchain->ResizeBuffers(0, dimensions.target_width, dimensions.target_height, DXGI_FORMAT_UNKNOWN, 0));
 	WIN_CHECK(d3d11_swapchain->GetBuffer(0, __uuidof(ID3D11Texture2D), reinterpret_cast<void **>(&d3d11_backbuffer)));
-
-	CU_CHECK(cuGraphicsD3D11RegisterResource(&cu_graphics_resource, d3d11_backbuffer, CU_GRAPHICS_REGISTER_FLAGS_NONE));
-	CU_CHECK(cuGraphicsResourceSetMapFlags(cu_graphics_resource, CU_GRAPHICS_MAP_RESOURCE_FLAGS_WRITE_DISCARD));
-	CU_CHECK(cuCtxPopCurrent(nullptr));
 
 	// Reallocate CUDA buffers
 	CU_CHECK(cuMemFree(device_ptr_converted_intermediate));
@@ -236,10 +239,7 @@ int Decoder::SequenceCallback(CUVIDEOFORMAT *video_format) {
 			.bottom = dimensions.target_rect_bottom
 		}
 	};
-	
-	CU_CHECK(cuCtxPushCurrent(cu_context));
 	CU_CHECK(cuvidCreateDecoder(&cu_decoder, &video_decode_info));
-	CU_CHECK(cuCtxPopCurrent(nullptr));
 
 	return NUMBER_OF_DECODE_SURFACES;
 }
@@ -303,7 +303,11 @@ int Decoder::DisplayCallback(CUVIDPARSERDISPINFO *display_info) {
 									    size, order, 0xFF));
 
 	// Map and copy decoded image to backbuffer
-	CU_CHECK(cuCtxPushCurrent(cu_context));
+	// Note: Calling cuGraphicsD3D11RegisterResource every frame is against the recommendations
+	// in the CUDA docs, however I don't have a better way of making it work with a swap chain
+	// in FLIP_DISCARD mode
+	CU_CHECK(cuGraphicsD3D11RegisterResource(&cu_graphics_resource, d3d11_backbuffer, CU_GRAPHICS_REGISTER_FLAGS_NONE));
+	CU_CHECK(cuGraphicsResourceSetMapFlags(cu_graphics_resource, CU_GRAPHICS_MAP_RESOURCE_FLAGS_WRITE_DISCARD));
 	CU_CHECK(cuGraphicsMapResources(1, &cu_graphics_resource, 0));
 	CUarray mapped_array;
 	CU_CHECK(cuGraphicsSubResourceGetMappedArray(&mapped_array, cu_graphics_resource, 0, 0));
@@ -318,10 +322,9 @@ int Decoder::DisplayCallback(CUVIDPARSERDISPINFO *display_info) {
 		.Height = dimensions.target_height
 	};
 
-	printf("Executing memcpy: %d:%d\n", dimensions.target_width, dimensions.target_height);
 	CU_CHECK(cuMemcpy2D(&memcpy_2d));
 	CU_CHECK(cuGraphicsUnmapResources(1, &cu_graphics_resource, 0));
-	CU_CHECK(cuCtxPopCurrent(nullptr));
+	CU_CHECK(cuGraphicsUnregisterResource(cu_graphics_resource));
 
 	CU_CHECK(cuvidUnmapVideoFrame(cu_decoder, device_ptr_source_frame));
 	return 1;

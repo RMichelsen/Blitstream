@@ -215,6 +215,8 @@ EncodedData Encoder::Encode() {
 
 
 EncodedData Encoder::StartCapture() {
+	printf("RESOURCE: %p\n", d3d11_resource);
+
 	if(d3d11_resource) {
 		d3d11_output_duplication->ReleaseFrame();
 		d3d11_resource->Release();
@@ -223,9 +225,17 @@ EncodedData Encoder::StartCapture() {
 
 	DXGI_OUTDUPL_FRAME_INFO frame_info {};
 	HRESULT dxgi_result = d3d11_output_duplication->AcquireNextFrame(1, &frame_info, &d3d11_resource);
+	printf("DXGI_RESULT1: %x\n", dxgi_result);
 	if(dxgi_result == DXGI_ERROR_WAIT_TIMEOUT) {
 		return {};
 	}
+	if(dxgi_result == DXGI_ERROR_ACCESS_LOST || !d3d11_resource) {
+		printf("Recr\n");
+		CreateDisplayDuplication();
+		dxgi_result = d3d11_output_duplication->AcquireNextFrame(1, &frame_info, &d3d11_resource);
+		printf("DXGI_RESULT2: %x\n", dxgi_result);
+	}
+
 	WIN_CHECK(d3d11_resource->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void **>(&d3d11_texture)));
 
 	return Encode();

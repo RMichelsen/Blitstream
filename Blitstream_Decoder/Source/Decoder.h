@@ -1,7 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <nvcuvid.h>
-#include <d3d11.h>
+#include <d3d11_1.h>
 
 struct OutputDimensions {
 	uint32_t target_width;
@@ -15,9 +15,9 @@ struct OutputDimensions {
 struct Decoder {
 	OutputDimensions dimensions;
 
-	ID3D11Device *d3d11_device;
-	IDXGISwapChain *d3d11_swapchain;
-	ID3D11DeviceContext *d3d11_context;
+	ID3D11Device1 *d3d11_device;
+	IDXGISwapChain1 *d3d11_swapchain;
+	ID3D11DeviceContext1 *d3d11_context;
 	ID3D11Texture2D *d3d11_backbuffer;
 
 	CUdevice cu_device;
