@@ -32,17 +32,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 	return DefWindowProc(hwnd, msg, wparam, lparam);
 }
 
-void OpenConsole() {
-	FILE *dummy;
-	AllocConsole();
-	freopen_s(&dummy, "CONIN$", "r", stdin);
-	freopen_s(&dummy, "CONOUT$", "w", stdout);
-	freopen_s(&dummy, "CONOUT$", "w", stderr);
-}
-
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_line, int n_cmd_show) {
+	// Hacky way of getting argv[1]...
+	char *command_line_args = GetCommandLine();
+	char *ip_address = strchr(command_line_args, 0x20) + 1;
+
 	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
-	OpenConsole();
 
 	const char *window_class_name = "Blitstream_Class";
 	const char *window_title = "Blitstream";
@@ -82,7 +77,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	decoder.Initialize(hwnd);
 
 	Client client {};
-	client.Initialize();
+
+	InitMessage init_message = client.Initialize(ip_address);
+	
+	char title[128];
+	sprintf_s(title, sizeof(title), "Connected to %s", ip_address);
+	SetWindowText(hwnd, title);
+
+	decoder.encoded_width = init_message.encoded_width;
+	decoder.encoded_height = init_message.encoded_height;
 
 	while(true) {
 		MSG msg;
@@ -98,8 +101,15 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 
 		EncodedData data = client.ReceiveData();
 
-		if(data.size != 0) {
+		if(data.result == EncodedDataResult::Success) {
 			decoder.Decode(data.ptr, data.size);
 		}
+		else if(data.result == EncodedDataResult::Abort) {
+			break;
+		}
 	}
+
+	UnregisterClass(window_class_name, instance);
+	decoder.Shutdown();
+	return 0;
 }

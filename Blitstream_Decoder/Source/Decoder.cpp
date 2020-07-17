@@ -170,8 +170,8 @@ void Decoder::Resize(uint32_t width, uint32_t height) {
 	
 	// Reconfigure decoder
 	CUVIDRECONFIGUREDECODERINFO reconfigure_params = {
-		.ulWidth = 3840,
-		.ulHeight = 2160,
+		.ulWidth = encoded_width,
+		.ulHeight = encoded_height,
 		.ulTargetWidth = dimensions.target_width,
 		.ulTargetHeight = dimensions.target_height,
 		.ulNumDecodeSurfaces = NUMBER_OF_DECODE_SURFACES,
@@ -184,8 +184,7 @@ void Decoder::Resize(uint32_t width, uint32_t height) {
 	};
 	CU_CHECK(cuvidReconfigureDecoder(cu_decoder, &reconfigure_params));
 
-	// Release all reference counted instances of the backbuffer
-	//CU_CHECK(cuGraphicsUnregisterResource(cu_graphics_resource));
+	// Release reference counted instance of the backbuffer
 	d3d11_backbuffer->Release();
 
 	// Resize swapchain and create new render target view from back buffer
@@ -217,8 +216,8 @@ void Decoder::Decode(void *ptr, uint32_t size) {
 int Decoder::SequenceCallback(CUVIDEOFORMAT *video_format) {
 
 	CUVIDDECODECREATEINFO video_decode_info {
-		.ulWidth = 3840,
-		.ulHeight = 2160,
+		.ulWidth = encoded_width,
+		.ulHeight = encoded_height,
 		.ulNumDecodeSurfaces = NUMBER_OF_DECODE_SURFACES,
 		.CodecType = cudaVideoCodec_HEVC,
 		.ChromaFormat = cudaVideoChromaFormat_420,

@@ -8,7 +8,7 @@ if(ret != 0) printf("WSA Error: %s is 0x%08x in %s at line %d\n", #x, x, __FILE_
 }
 constexpr const char *PORT = "4646";
 
-void Server::Initialize() {
+void Server::Initialize(uint32_t width, uint32_t height) {
 	WSA_CHECK(WSAStartup(MAKEWORD(2, 2), &wsa_data));
 
 	addrinfo hints {
@@ -33,12 +33,26 @@ void Server::Initialize() {
 
 	WSA_CHECK(listen(listen_socket, SOMAXCONN));
 
-	printf("Waiting for connection on port %s\n", PORT);
-	client_socket = accept(listen_socket, nullptr, nullptr);
+	printf("Waiting for connections on port %s\n", PORT);
+
+	sockaddr_in client_addr;
+	int client_addrlen = sizeof(client_addr);
+	char ipv4_address[INET_ADDRSTRLEN];
+	client_socket = accept(listen_socket, reinterpret_cast<sockaddr *>(&client_addr), &client_addrlen);
 	assert(client_socket != INVALID_SOCKET && "Failed to create client socket");
-	printf("Connection established\n");
+	inet_ntop(AF_INET, &(client_addr.sin_addr), ipv4_address, INET_ADDRSTRLEN);
+	printf("Connection established with IP: %s\n", ipv4_address);
 
 	closesocket(listen_socket);
+
+	// Send init packet
+	InitMessage init_message {
+		.MAGIC = 0x4646,
+		.encoded_width = width,
+		.encoded_height = height
+	};
+	int init_message_result = send(client_socket, reinterpret_cast<char *>(&init_message), sizeof(InitMessage), 0);
+	assert(init_message_result != SOCKET_ERROR && "Failed to send initial message");
 }
 
 bool Server::SendData(void *ptr, uint32_t size) {
@@ -56,13 +70,9 @@ bool Server::SendData(void *ptr, uint32_t size) {
 	if(header.size != 0) {
 		result = send(client_socket, static_cast<char *>(ptr), static_cast<int>(size), 0);
 		if(result == SOCKET_ERROR) return false;
-		printf("Sent %lu bytes of encoded data\n", size);
 	}
 	// Otherwise the header will suffice to tell the 
 	// client that it should simply duplicate the current frame
-	else {
-		printf("Sent duplicate frame request\n");
-	}
 
 	return true;
 }

@@ -7,7 +7,7 @@ if(ret != 0) printf("WSA Error: %s is 0x%08x in %s at line %d\n", #x, x, __FILE_
 }
 constexpr const char *PORT = "4646";
 
-void Client::Initialize() {
+InitMessage Client::Initialize(const char *ip_address) {
 	WSA_CHECK(WSAStartup(MAKEWORD(2, 2), &wsa_data));
 
     addrinfo hints {
@@ -17,7 +17,7 @@ void Client::Initialize() {
     };
 
     addrinfo *result;
-    WSA_CHECK(getaddrinfo("127.0.0.1", PORT, &hints, &result));
+    WSA_CHECK(getaddrinfo(ip_address, PORT, &hints, &result));
 
     connection_socket = socket(result->ai_family,
                                result->ai_socktype,
@@ -29,18 +29,32 @@ void Client::Initialize() {
     freeaddrinfo(result);
 
     data_buffer = VirtualAlloc(nullptr, 1024u * 1024u, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+
+    // Receive initial message
+    InitMessage init_message {};
+    int init_message_result = recv(connection_socket, reinterpret_cast<char *>(&init_message), sizeof(InitMessage), 0);
+    assert(init_message_result != SOCKET_ERROR && "Failed to receive initial message");
+    assert(init_message.MAGIC == 0x4646 && "Unrecognized header");
+
+    return init_message;
 }
 
 EncodedData Client::ReceiveData() {
     DataHeader header {};
 
     int result = recv(connection_socket, reinterpret_cast<char *>(&header), sizeof(DataHeader), 0);
-    assert(result > 0 && "Failed to receive header");
+    if(result == SOCKET_ERROR) {
+        return EncodedData {
+            .result = EncodedDataResult::Abort
+        };
+    }
     assert(header.MAGIC == 0x4646 && "Unrecognized header");
 
     // Return early if duplicate frame request
     if(header.size == 0) {
-        return {};
+        return EncodedData {
+            .result = EncodedDataResult::Duplicate
+        };
     }
 
     uint32_t bytes_left = header.size;
@@ -53,6 +67,7 @@ EncodedData Client::ReceiveData() {
     assert(bytes_left == 0 && "Failed to receive encoded data");
 
     return EncodedData {
+        .result = EncodedDataResult::Success,
         .ptr = data_buffer,
         .size = header.size
     };

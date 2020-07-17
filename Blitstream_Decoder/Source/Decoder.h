@@ -13,6 +13,9 @@ struct OutputDimensions {
 };
 
 struct Decoder {
+	uint32_t encoded_width;
+	uint32_t encoded_height;
+
 	OutputDimensions dimensions;
 
 	ID3D11Device1 *d3d11_device;

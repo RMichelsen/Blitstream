@@ -12,7 +12,7 @@ int main(int argc, char **argv) {
 	encoder.Initialize();
 
 	Server server {};
-	server.Initialize();
+	server.Initialize(encoder.width, encoder.height);
 
 	using namespace std::chrono;
 	auto start = high_resolution_clock::now();
@@ -33,7 +33,7 @@ int main(int argc, char **argv) {
 				memset(&server, 0, sizeof(Server));
 				memset(&encoder, 0, sizeof(Encoder));
 				encoder.Initialize();
-				server.Initialize();
+				server.Initialize(encoder.width, encoder.height);
 
 				continue;
 			}

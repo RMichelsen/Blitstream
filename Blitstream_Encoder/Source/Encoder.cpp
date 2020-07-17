@@ -53,6 +53,8 @@ void Encoder::CreateDisplayDuplication() {
 	d3d11_output_duplication->GetDesc(&desc);
 	width = desc.ModeDesc.Width;
 	height = desc.ModeDesc.Height;
+
+	printf("Starting encoder @ %ux%u\n", width, height);
 }
 
 void Encoder::CreateEncoder() {
@@ -141,10 +143,10 @@ void Encoder::CreateEncoder() {
 		.version = NV_ENC_INITIALIZE_PARAMS_VER,
 		.encodeGUID = nvenc_encode_guid,
 		.presetGUID = nvenc_preset_guid,
-		.encodeWidth = 3840,
-		.encodeHeight = 2160,
-		.darWidth = 3840,
-		.darHeight = 2160,
+		.encodeWidth = width,
+		.encodeHeight = height,
+		.darWidth = width,
+		.darHeight = height,
 		.frameRateNum = 60,
 		.frameRateDen = 1,
 		.enableEncodeAsync = 0, // TODO: Unsure
@@ -173,8 +175,8 @@ EncodedData Encoder::Encode() {
 	NV_ENC_REGISTER_RESOURCE register_resource {
 		.version = NV_ENC_REGISTER_RESOURCE_VER,
 		.resourceType = NV_ENC_INPUT_RESOURCE_TYPE_DIRECTX,
-		.width = 3840,
-		.height = 2160,
+		.width = width,
+		.height = height,
 		.pitch = 0,
 		.subResourceIndex = 0,
 		.resourceToRegister = d3d11_texture,
@@ -192,8 +194,8 @@ EncodedData Encoder::Encode() {
 
 	NV_ENC_PIC_PARAMS pic_params = {
 		.version = NV_ENC_PIC_PARAMS_VER,
-		.inputWidth = 3840,
-		.inputHeight = 2160,
+		.inputWidth = width,
+		.inputHeight = height,
 		.inputBuffer = input_resource.mappedResource,
 		.outputBitstream = nvenc_output_buffers[index],
 		.bufferFmt = input_resource.mappedBufferFmt,
@@ -215,8 +217,6 @@ EncodedData Encoder::Encode() {
 
 
 EncodedData Encoder::StartCapture() {
-	printf("RESOURCE: %p\n", d3d11_resource);
-
 	if(d3d11_resource) {
 		d3d11_output_duplication->ReleaseFrame();
 		d3d11_resource->Release();
@@ -225,17 +225,10 @@ EncodedData Encoder::StartCapture() {
 
 	DXGI_OUTDUPL_FRAME_INFO frame_info {};
 	HRESULT dxgi_result = d3d11_output_duplication->AcquireNextFrame(1, &frame_info, &d3d11_resource);
-	printf("DXGI_RESULT1: %x\n", dxgi_result);
 	if(dxgi_result == DXGI_ERROR_WAIT_TIMEOUT) {
 		return {};
 	}
-	if(dxgi_result == DXGI_ERROR_ACCESS_LOST || !d3d11_resource) {
-		printf("Recr\n");
-		CreateDisplayDuplication();
-		dxgi_result = d3d11_output_duplication->AcquireNextFrame(1, &frame_info, &d3d11_resource);
-		printf("DXGI_RESULT2: %x\n", dxgi_result);
-	}
-
+	assert(dxgi_result == 0 && "Error duplicating desktop output"); 
 	WIN_CHECK(d3d11_resource->QueryInterface(__uuidof(ID3D11Texture2D), reinterpret_cast<void **>(&d3d11_texture)));
 
 	return Encode();
