@@ -1,6 +1,7 @@
 #include "Client.h"
 #include <cassert>
 #include <cstdio>
+
 #define WSA_CHECK(x) { \
 int ret = x; \
 if(ret != 0) printf("WSA Error: %s is 0x%08x in %s at line %d\n", #x, x, __FILE__, __LINE__); \

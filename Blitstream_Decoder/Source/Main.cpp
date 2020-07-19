@@ -33,11 +33,12 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
 }
 
 int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_line, int n_cmd_show) {
-	// Hacky way of getting argv[1]...
-	char *command_line_args = GetCommandLine();
-	char *ip_address = strchr(command_line_args, 0x20) + 1;
+	uint64_t ip_address_str_size;
+	char *ip_address = (char *)malloc(1024);
+	wcstombs_s(&ip_address_str_size, ip_address, 1024, p_cmd_line, 1024);
 
 	SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_SYSTEM_AWARE);
+
 
 	const char *window_class_name = "Blitstream_Class";
 	const char *window_title = "Blitstream";
@@ -79,10 +80,12 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 	Client client {};
 
 	InitMessage init_message = client.Initialize(ip_address);
-	
+
 	char title[128];
 	sprintf_s(title, sizeof(title), "Connected to %s", ip_address);
 	SetWindowText(hwnd, title);
+
+	free(ip_address);
 
 	decoder.encoded_width = init_message.encoded_width;
 	decoder.encoded_height = init_message.encoded_height;
@@ -107,6 +110,7 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE prev_instance, PWSTR p_cmd_lin
 		else if(data.result == EncodedDataResult::Abort) {
 			break;
 		}
+
 	}
 
 	UnregisterClass(window_class_name, instance);

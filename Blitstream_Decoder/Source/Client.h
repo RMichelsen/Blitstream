@@ -27,9 +27,6 @@ struct EncodedData {
 };
 
 struct Client {
-	uint32_t encoded_width;
-	uint32_t encoded_height;
-
 	WSAData wsa_data;
 	SOCKET connection_socket;
 

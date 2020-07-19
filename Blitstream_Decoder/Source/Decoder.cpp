@@ -214,7 +214,6 @@ void Decoder::Decode(void *ptr, uint32_t size) {
 //  1: driver should not override ulMaxNumDecodeSurfaces
 // >1: driver should override ulMaxNumDecodeSurfaces with returned value
 int Decoder::SequenceCallback(CUVIDEOFORMAT *video_format) {
-
 	CUVIDDECODECREATEINFO video_decode_info {
 		.ulWidth = encoded_width,
 		.ulHeight = encoded_height,
@@ -246,7 +245,6 @@ int Decoder::SequenceCallback(CUVIDEOFORMAT *video_format) {
 // 0: fail
 // 1: succeed
 int Decoder::DecodeCallback(CUVIDPICPARAMS *pic_params) {
-
 	CU_CHECK(cuvidDecodePicture(cu_decoder, pic_params));
 	return 1;
 }
