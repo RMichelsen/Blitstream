@@ -7,4 +7,4 @@ Blitstream - P2P screen sharing software using NvEnc/NvDec
 
 # Requirements
 - Windows 10
-- Nvidia GPU, Pascal architecture or newer
+- Nvidia GPU, Pascal architecture or newer and updated drivers
